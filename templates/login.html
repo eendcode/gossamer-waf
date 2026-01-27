@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gateway</title>
+  <link rel="stylesheet" href="/gstatic/css/bulma.min.css">
+</head>
+<body>
+
+
+  <noscript>
+    <p>You need JavaScript enabled in order to proceed.</p>
+  </noscript>
+
+  <section class="hero is-info">
+    <div class="hero-body">
+      <p class="title">Gateway</p>
+      <p class="subtitle">We need to get to know you.</p>
+    </div>
+  </section>
+
+  <div class="fixed-grid has-2-cols">
+    <div class="grid">
+      <div class="cell">
+        <div class="content has-text-centered">
+          <p style="font-size:256px" id="countdown" class="px-6 pt-6">10</p>
+          <p>seconds remaining</p>
+        </div>
+      </div>
+      <div class="cell">
+        <div class="content has-text-centered">
+          <h1><p class="px-6 py-6">What's next?</p></h1>
+          <p>
+            Once you're verified, we'll redirect you to <code>{{ .ReturnUrl }}</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+  (function () {
+      "use strict";
+
+      try {
+        var ua = navigator.userAgent || "";
+
+        var isWebDriver = Boolean(navigator.webdriver);
+
+        var isHeadlessUA = /Headless|PhantomJS|puppeteer|playwright/i.test(ua);
+
+        if (isWebDriver || isHeadlessUA) {
+          console.log("Redirect aborted: headless/automation detected");
+          return;
+        }
+
+
+        if (typeof document.hidden !== "undefined" && document.hidden) {
+          console.log("Redirect aborted: document is hidden");
+          return;
+        }
+
+        let hasMoved = false;
+
+        window.addEventListener(
+          "mousemove",
+          () => {
+            if (hasMoved) return;
+            hasMoved = true;
+
+            let seconds = 10;
+            const el = document.getElementById("countdown");
+            el.textContent = `${seconds}`;
+
+            const timer = setInterval(() => {
+              seconds--;
+              el.textContent = `${seconds}`;
+
+              if (seconds <= 0) {
+                clearInterval(timer);
+                document.cookie = "{{ .Cookie }}";
+                location.replace("{{ .ReturnUrl }}");
+              }
+            }, 1000);
+          },
+          { once: true }
+        );
+      } catch (err) {
+        console.error("Redirect aborted by error:", err);
+      }
+    })();
+</script>
+
+</body>
+</html>

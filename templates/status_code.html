@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ .Status }}</title>
+    <link rel="stylesheet" href="/gstatic/css/bulma.min.css">
+</head>
+
+<body>
+
+    <section class="hero is-{{ .Color }}">
+        <div class="hero-body">
+            <p class="title">{{ .Status }}</p>
+            <p class="subtitle">{{ .Subtitle }}</p>
+        </div>
+    </section>
+
+    <div class="content has-text-centered">
+        <p style="font-size:256px" class="py-6 px-6">{{ .StatusCode }}</p>
+    </div>
+
+    <div class="content has-text-centered">
+        <p>{{ .Subtext }}</p>
+    </div>
+</body>
+
+</html>
