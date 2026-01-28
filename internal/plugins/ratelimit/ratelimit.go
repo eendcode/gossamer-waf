@@ -63,6 +63,15 @@ func New() (*RateLimiter, error) {
 }
 
 func (r *RateLimiter) Validate(c gossamer.Connection) bool {
+	strikes, err := r.KvStore.GetStrikes(context.TODO(), c.Cookie)
+	if err != nil {
+		return false
+	}
+
+	if strikes >= 20 {
+		return false
+	}
+
 	ok, remaining, err := r.KvStore.Allow(context.TODO(), c.Cookie)
 
 	if !ok {

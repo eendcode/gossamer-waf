@@ -14,7 +14,7 @@ type ValkeyTokenBucketLimiter struct {
 	Client     valkey.Client
 	Script     *valkey.Lua
 	Capacity   int     `env:"RATE_LIMIT_CAPACITY" envDefault:"60"`
-	RefillRate float64 `env:"RATE_LIMIT_REFILL_RATE" envDefault:"3.0"`
+	RefillRate float64 `env:"RATE_LIMIT_REFILL_RATE" envDefault:"1.0"`
 	Host       string  `env:"VALKEY_HOST" envDefault:"localhost"`
 	Port       int     `env:"VALKEY_PORT" envDefault:"6379"`
 }
@@ -76,7 +76,7 @@ func (tbl *ValkeyTokenBucketLimiter) Allow(ctx context.Context, key string) (boo
 		[]string{key},
 		[]string{
 			strconv.Itoa(int(now)),
-			strconv.Itoa(int(tbl.RefillRate)),
+			strconv.FormatFloat(tbl.RefillRate, 'f', -1, 64),
 			strconv.Itoa(tbl.Capacity),
 		},
 	).ToArray()

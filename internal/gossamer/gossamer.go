@@ -54,6 +54,7 @@ type Connection struct {
 	IpAddress   string
 	Transaction types.Transaction
 	Timing      Timing
+	Url         string
 }
 
 func (r *Connection) Load() error {
@@ -71,6 +72,7 @@ func (r *Connection) Load() error {
 		r.Cookie = strings.Split(cookie.Value, ",")[0]
 	}
 
+	r.Url = r.Request.Host + r.Request.RequestURI
 	r.Recorder = httptest.NewRecorder()
 	r.Timing.Request = time.Now()
 

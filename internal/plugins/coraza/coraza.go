@@ -254,7 +254,9 @@ func logInterruption(it *types.Interruption, r gossamer.Connection) {
 		"cookie", r.Cookie,
 		"rule", it.RuleID,
 		"transaction_id", r.Transaction.ID(),
-		"client_ip", clientIp,
+		"ip", clientIp,
+		"url", r.Url,
+		"method", r.Request.Method,
 		"audit_logs", auditLogs,
 	)
 

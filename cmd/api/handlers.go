@@ -78,13 +78,6 @@ func checkIn(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 
-	// // Act accordingly to the strike level
-	// // TODO: expand on this
-	// if strikes >= 20 {
-	// 	w.WriteHeader(http.StatusOK)
-	// 	w.Write([]byte(hook.Blur().Script))
-	// }
-
 }
 
 func handleProxy(w http.ResponseWriter, rq *http.Request) {
