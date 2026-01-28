@@ -421,9 +421,9 @@ func (b *BrowserPlugin) Validate(c gossamer.Connection) bool {
 
 func (b *BrowserPlugin) Verify(_ gossamer.Connection) bool { return true }
 
-func (b *BrowserPlugin) Preprocess(_ gossamer.Connection) error { return nil }
+func (b *BrowserPlugin) Preprocess(_ gossamer.Connection) (bool, error) { return true, nil }
 
-func (b *BrowserPlugin) Postprocess(_ gossamer.Connection) error { return nil }
+func (b *BrowserPlugin) Postprocess(_ gossamer.Connection) (bool, error) { return true, nil }
 
 func New() (*BrowserPlugin, error) {
 	return &BrowserPlugin{}, nil

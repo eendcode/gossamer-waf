@@ -54,10 +54,16 @@ func (tbl *ValkeyTokenBucketLimiter) IncreaseStrikes(ctx context.Context, cookie
 }
 
 func (tbl *ValkeyTokenBucketLimiter) GetStrikes(ctx context.Context, cookie string) (int64, error) {
-	return tbl.Client.Do(
+	val, err := tbl.Client.Do(
 		ctx,
-		tbl.Client.B().Hmget().Key(cookie).Field("strikes").Build(),
+		tbl.Client.B().Hget().Key(cookie).Field("strikes").Build(),
 	).AsInt64()
+
+	if err == valkey.Nil {
+		return 0, nil
+	} else {
+		return val, err
+	}
 }
 
 func (tbl *ValkeyTokenBucketLimiter) Allow(ctx context.Context, key string) (bool, int64, error) {

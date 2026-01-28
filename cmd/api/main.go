@@ -26,6 +26,7 @@ var settings struct {
 	// LogLevel                  string        `env:"LOG_LEVEL" envDefault:"info"`
 	// Domain                    string        `env:"DOMAIN"`
 	IgnorePlugins []string `env:"IGNORE_PLUGINS"`
+	HookDebugMode bool     `env:"HOOK_DEBUG_MODE" envDefault:"false"`
 	// LoginRateLimitCapacity    int           `env:"LOGIN_RATE_LIMIT_CAPACITY" envDefault:"5"`
 	// LoginRateLimitRefillRate  float64       `env:"LOGIN_RATE_LIMIT_REFILL_RATE" envDefault:"0.1"` // 0.1 per second
 	// CookieRateLimitCapacity   int           `env:"COOKIE_RATE_LIMIT_CAPACITY" envDefault:"40"`
@@ -93,7 +94,7 @@ func main() {
 	mux.Handle("/favicon.ico", http.NotFoundHandler())
 	mux.Handle("/gstatic/", http.StripPrefix("/gstatic/", http.FileServer(http.Dir("static/"))))
 	mux.HandleFunc("/gshealth", healthz)
-	// mux.HandleFunc("/_gApi/newCookie", newCookie)
+	mux.HandleFunc("/_gsHook", checkIn)
 	mux.HandleFunc("/", handleProxy)
 
 	logger.Info(

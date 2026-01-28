@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"gossamer/internal/gossamer"
 	"gossamer/internal/helpers"
@@ -27,37 +28,6 @@ func noContextCancelationErrors(w http.ResponseWriter, r *http.Request, err erro
 	rendering.RenderBadGateway(w, r)
 }
 
-// func newCookie(w http.ResponseWriter, r *http.Request) {
-// 	// Get the right plugin
-// 	kvStore := pluginMap["ratelimit"].(*ratelimit.RateLimiter)
-// 	if kvStore == nil {
-// 		raiseInternalServerError(w, errors.New("unable to get key-value store"))
-// 		return
-// 	}
-
-// 	// Check if the rate limiter allows this on an IP basis
-// 	// ip, _ := helpers.ParseRemoteAddr(r.RemoteAddr)
-// 	// allowed, _, err := kvStore.KvStore.Allow(context.Background(), ip)
-// 	// if err != nil {
-// 	// 	raiseInternalServerError(w, err)
-// 	// 	return
-// 	// }
-
-// 	// if !allowed()
-
-// 	cookie, err := helpers.GenerateCookie()
-// 	if err != nil {
-// 		raiseInternalServerError(w, errors.New("unable to generate new cookie"))
-// 	}
-// 	kvStore.KvStore.CreateCookie(context.TODO(), cookie)
-
-// 	cmd := hook.NewCookie(cookie)
-// 	w.Header().Add("content-type", "text/javascript")
-// 	w.WriteHeader(200)
-// 	w.Write([]byte(cmd.Script))
-
-// }
-
 func checkIn(w http.ResponseWriter, r *http.Request) {
 
 	// Get the right plugin
@@ -68,7 +38,7 @@ func checkIn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cookie, err := helpers.GetCookie(r)
-	if err != http.ErrNoCookie {
+	if err == http.ErrNoCookie {
 		// no cookie set -> 403
 
 		w.WriteHeader(http.StatusForbidden)
@@ -81,6 +51,8 @@ func checkIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Debug("got cookie in hook", "cookie", cookie)
+
 	// Check the cookies current strike level
 	strikes, err := kvStore.KvStore.GetStrikes(context.Background(), cookie)
 	if err != nil {
@@ -88,12 +60,30 @@ func checkIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Act accordingly to the strike level
-	// TODO: expand on this
-	if strikes >= 20 {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(hook.Blur().Script))
+	logger.Debug("fetched client strikes", "strikes", strikes, "client", cookie)
+
+	type response struct {
+		Strikes int64 `json:"strikes"`
+		Debug   bool  `json:"debug"`
 	}
+
+	res := response{Strikes: strikes, Debug: settings.HookDebugMode}
+
+	data, err := json.Marshal(res)
+	if err != nil {
+		raiseInternalServerError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+
+	// // Act accordingly to the strike level
+	// // TODO: expand on this
+	// if strikes >= 20 {
+	// 	w.WriteHeader(http.StatusOK)
+	// 	w.Write([]byte(hook.Blur().Script))
+	// }
 
 }
 
@@ -119,6 +109,19 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 	if err == http.ErrNoCookie {
 		// no cookie set - we set the cookie and do a quick redirect
 		logger.Debug("no cookie set", "ip", c.IpAddress)
+
+		allowed, remaining, err := kvStore.KvStore.Allow(context.Background(), c.IpAddress)
+		if err != nil {
+			raiseInternalServerError(w, err)
+			return
+		}
+
+		if !allowed {
+			logger.Info("client hit rate limit", "ip", c.IpAddress)
+			rendering.RenderForbidden(w, rq)
+			return
+		}
+
 		newCookie, err := helpers.GenerateCookie()
 		if err != nil {
 			raiseInternalServerError(w, err)
@@ -130,8 +133,10 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 			return
 		}
 
+		logger.Debug("new client been given a cookie", "ip", c.IpAddress, "cookie", newCookie, "rate_limit_remaining", remaining)
+
 		cmd := hook.NewCookie(newCookie, rq.RequestURI)
-		w.Write(cmd.ToHtml())
+		w.Write([]byte(cmd.Script))
 		return
 
 	} else if err != nil {
@@ -140,7 +145,11 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
+	// Always strip the Accept-Encoding header
+	c.Request.Header.Del("Accept-Encoding")
+
 	// Validators
+	startValidation := time.Now()
 	if !plugins.RunValidation(pluginMap, c) {
 		logger.Debug("received negative answer from validation", "cookie", c.Cookie, "url", c.Request.URL.String())
 
@@ -152,27 +161,41 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
+	endValidation := time.Now()
+	logger.Debug("validation phase ended", "cookie", c.Cookie, "ip_address", c.IpAddress, "duration_ms", endValidation.Sub(startValidation).Milliseconds())
+
 	// Preprocessors
-	if err := plugins.RunPreprocessor(pluginMap, c); err != nil {
+	startPreprocession := time.Now()
+	ok, err := plugins.RunPreprocessor(pluginMap, c)
+	if err != nil {
 		raiseInternalServerError(w, err)
+		return
+	}
+
+	if !ok {
+		rendering.RenderForbidden(w, rq)
 		return
 	}
 
 	// Send to proxy
 	px := httputil.ReverseProxy{
 		Rewrite: func(proxyRequest *httputil.ProxyRequest) {
-			proxyRequest.SetURL(c.Request.URL)
+			// proxyRequest.SetURL(c.Request.URL)
 			proxyRequest.Out.Host = proxyRequest.In.Host
 		},
 		ModifyResponse: modifyFunc,
 		ErrorHandler:   noContextCancelationErrors,
 	}
 
+	endPreprocession := time.Now()
+	logger.Debug("preprocession phase ended", "cookie", c.Cookie, "ip_address", c.IpAddress, "duration_ms", endPreprocession.Sub(startPreprocession).Milliseconds())
+
 	c.Timing.UpstreamRequest = time.Now()
 	px.ServeHTTP(c.Recorder, c.Request)
 	c.Timing.UpstreamResponse = time.Now()
 
 	// Verifiers
+	startVerification := time.Now()
 	if !plugins.RunVerification(pluginMap, c) {
 		logger.Debug("received negative answer from verification", "cookie", c.Cookie, "url", c.Request.URL.String())
 
@@ -183,12 +206,24 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		rendering.RenderForbidden(w, rq)
 		return
 	}
+	endVerification := time.Now()
+	logger.Debug("verification phase ended", "cookie", c.Cookie, "ip_address", c.IpAddress, "duration_ms", endVerification.Sub(startVerification).Milliseconds())
 
 	// Postprocessors
-	if err := plugins.RunPostprocessor(pluginMap, c); err != nil {
+	startPostprocession := time.Now()
+	ok, err = plugins.RunPostprocessor(pluginMap, c)
+	if err != nil {
 		raiseInternalServerError(w, err)
 		return
 	}
+
+	if !ok {
+		rendering.RenderForbidden(w, rq)
+		return
+	}
+
+	endPostprocession := time.Now()
+	logger.Debug("postprocession phase ended", "cookie", c.Cookie, "ip_address", c.IpAddress, "duration_ms", endPostprocession.Sub(startPostprocession).Milliseconds())
 
 	// Replay to the client
 	logger.Debug("replaying response to client", "phase", 4)
@@ -198,6 +233,9 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 			w.Header().Add(k, v)
 		}
 	}
+
+	// Fix the content-length
+	w.Header().Del("Content-Length")
 
 	w.WriteHeader(c.Recorder.Code)
 	w.Write(c.Recorder.Body.Bytes())

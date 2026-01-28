@@ -19,9 +19,9 @@ var logger *slog.Logger
 
 type WAF struct {
 	czv3.WAF
-	ParanoiaLevel int    `env:"CRS_PARANOIA_LEVEL" envDefault:"3" validate:"gte=1,lte=4"`
-	RepoName      string `env:"REPO_NAME" envDefault:"gossamer"`
-	CookieName    string `env:"COOKIE_NAME" envDefault:"CF_AppSession"`
+	ParanoiaLevel   int    `env:"CRS_PARANOIA_LEVEL" envDefault:"3" validate:"gte=1,lte=4"`
+	RepoName        string `env:"REPO_NAME" envDefault:"gossamer"`
+	InspectResponse bool   `env:"CORAZA_INSPECT_RESPONSE" envDefault:"false"`
 }
 
 func New() (*WAF, error) {
@@ -86,9 +86,18 @@ func New() (*WAF, error) {
 
 func (w *WAF) Validate(r gossamer.Connection) bool {
 
+	return true
+
+}
+
+func (w *WAF) Verify(r gossamer.Connection) bool {
+	return true
+}
+
+func (w *WAF) Preprocess(r gossamer.Connection) (bool, error) {
 	if err := r.Load(); err != nil {
 		logger.Error("error loading connection", "error", "err", "module", "coraza", "cookie", r.Cookie)
-		return false
+		return false, err
 	}
 
 	logger.Debug(
@@ -119,7 +128,7 @@ func (w *WAF) Validate(r gossamer.Connection) bool {
 	// Coraza phase 1
 	if it := r.Transaction.ProcessRequestHeaders(); it != nil {
 		logInterruption(it, r)
-		return false
+		return false, nil
 	}
 
 	r.Transaction.ProcessURI(r.Request.URL.String(), r.Request.Method, r.Request.Proto)
@@ -135,10 +144,10 @@ func (w *WAF) Validate(r gossamer.Connection) bool {
 	// phase 2
 	if it, err := r.Transaction.ProcessRequestBody(); it != nil {
 		logInterruption(it, r)
-		return false
+		return false, nil
 	} else if err != nil {
 		logger.Error("error on processing request body", "module", "coraza", "error", err, "cookie", r.Cookie)
-		return false
+		return false, err
 	}
 
 	logger.Debug(
@@ -148,11 +157,13 @@ func (w *WAF) Validate(r gossamer.Connection) bool {
 		"transaction_id", r.Transaction.ID(),
 	)
 
-	return true
-
+	return true, nil
 }
 
-func (w *WAF) Verify(r gossamer.Connection) bool {
+func (w *WAF) Postprocess(r gossamer.Connection) (bool, error) {
+	if !w.InspectResponse {
+		return true, nil
+	}
 
 	// Coraza phase 3
 	for k, values := range r.Recorder.Header() {
@@ -167,38 +178,30 @@ func (w *WAF) Verify(r gossamer.Connection) bool {
 		"HTTP/1.1",
 	); it != nil {
 		logInterruption(it, r)
-		return false
+		return false, nil
 	}
 
 	// Phase 4
 	body := r.Recorder.Body.Bytes()
 	if it, _, err := r.Transaction.WriteResponseBody(body); it != nil {
 		logInterruption(it, r)
-		return false
+		return false, nil
 	} else if err != nil {
 		logger.Error("error on writing response body", "error", err, "module", "coraza", "cookie", r.Cookie)
-		return false
+		return false, err
 	}
 
 	if it, err := r.Transaction.ProcessResponseBody(); it != nil {
 		logInterruption(it, r)
-		return false
+		return false, err
 	} else if err != nil {
 		logger.Error("error on processing request body", "error", err, "module", "coraza", "cookie", r.Cookie)
-		return false
+		return false, err
 	}
 
 	r.Transaction.ProcessLogging()
 
-	return true
-}
-
-func (w *WAF) Preprocess(r gossamer.Connection) error {
-	return nil
-}
-
-func (w *WAF) Postprocess(r gossamer.Connection) error {
-	return nil
+	return true, nil
 }
 
 type AuditLog struct {

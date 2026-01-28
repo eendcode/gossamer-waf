@@ -25,8 +25,12 @@ func init() {
 
 type Timing struct {
 	Request          time.Time
+	Validation       time.Time
+	Preprocession    time.Time
 	UpstreamRequest  time.Time
 	UpstreamResponse time.Time
+	Verification     time.Time
+	Postprocession   time.Time
 	Response         time.Time
 }
 
@@ -37,6 +41,10 @@ func (t Timing) UpstreamDuration() int64 {
 
 func (t Timing) Total() int64 {
 	return t.Response.Sub(t.Request).Milliseconds()
+}
+
+func (t Timing) ValidationTime() int64 {
+	return t.Validation.Sub(t.Request).Milliseconds()
 }
 
 type Connection struct {

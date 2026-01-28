@@ -178,18 +178,18 @@ SOURCE_CHECK:
 
 }
 
-func (u *UpstreamConfig) Preprocess(c gossamer.Connection) error {
+func (u *UpstreamConfig) Preprocess(c gossamer.Connection) (bool, error) {
 	// Set the request URL to the upstream URL
 	upstream := u.findMatchingUpstream(c)
 
 	upstreamUrl, err := url.Parse(upstream.Url + c.Request.URL.Path)
 	c.Request.URL = upstreamUrl
 
-	return err
+	return true, err
 }
 
-func (u *UpstreamConfig) Postprocess(_ gossamer.Connection) error {
-	return nil
+func (u *UpstreamConfig) Postprocess(_ gossamer.Connection) (bool, error) {
+	return true, nil
 }
 
 func (u *UpstreamConfig) Verify(_ gossamer.Connection) bool {

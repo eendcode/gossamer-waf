@@ -1,11 +1,11 @@
 package plugins
 
 import (
-	"fmt"
 	"gossamer/internal/gossamer"
 	"gossamer/internal/plugins/browser"
 	"gossamer/internal/plugins/coraza"
 	"gossamer/internal/plugins/ratelimit"
+	"gossamer/internal/plugins/scriptinjector"
 	"gossamer/internal/plugins/upstream"
 	"net/http"
 	"sync"
@@ -19,10 +19,11 @@ var settings struct {
 }
 
 var Plugins map[string]func() (Plugin, error) = map[string]func() (Plugin, error){
-	"browser":   func() (Plugin, error) { return browser.New() },
-	"coraza":    func() (Plugin, error) { return coraza.New() },
-	"upstream":  func() (Plugin, error) { return upstream.New() },
-	"ratelimit": func() (Plugin, error) { return ratelimit.New() },
+	"browser":        func() (Plugin, error) { return browser.New() },
+	"scriptinjector": func() (Plugin, error) { return scriptinjector.New() },
+	"coraza":         func() (Plugin, error) { return coraza.New() },
+	"upstream":       func() (Plugin, error) { return upstream.New() },
+	"ratelimit":      func() (Plugin, error) { return ratelimit.New() },
 }
 
 var Modifiers map[string]func() (ResponseModifier, error) = map[string]func() (ResponseModifier, error){
@@ -41,8 +42,8 @@ type Plugin interface {
 
 	// A preprocessor (and the same goes for postprocessors) modifies the request.
 	// Note that it is blocking, so they are quite expensive.
-	Preprocess(gossamer.Connection) error
-	Postprocess(gossamer.Connection) error
+	Preprocess(gossamer.Connection) (bool, error)
+	Postprocess(gossamer.Connection) (bool, error)
 }
 
 type ResponseModifier interface {
@@ -122,15 +123,15 @@ func RunValidation(pm map[string]Plugin, c gossamer.Connection) bool {
 	validationChannel := make(chan bool)
 	var validationWg sync.WaitGroup
 
-	// We run all plugins asynchronously
-	for name, plugin := range pm {
+	// We run all validators asynchronously
+	for _, plugin := range pm {
 
 		validationWg.Add(1)
 		go func(p Plugin) {
 
 			defer validationWg.Done()
 			if !p.Validate(c) {
-				fmt.Println(name)
+				// fmt.Println(name)
 				validationChannel <- false
 			}
 
@@ -153,24 +154,33 @@ func RunValidation(pm map[string]Plugin, c gossamer.Connection) bool {
 	return true
 }
 
-func RunPreprocessor(pm map[string]Plugin, c gossamer.Connection) error {
+func RunPreprocessor(pm map[string]Plugin, c gossamer.Connection) (bool, error) {
 	for _, plugin := range pm {
-		if err := plugin.Preprocess(c); err != nil {
-			return err
+		ok, err := plugin.Preprocess(c)
+		if err != nil {
+			return false, err
+		}
+
+		if !ok {
+			return false, nil
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
-func RunPostprocessor(pm map[string]Plugin, c gossamer.Connection) error {
+func RunPostprocessor(pm map[string]Plugin, c gossamer.Connection) (bool, error) {
 	for _, plugin := range pm {
-		if err := plugin.Postprocess(c); err != nil {
-			return err
+		ok, err := plugin.Postprocess(c)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			return false, nil
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
 func RunVerification(pm map[string]Plugin, c gossamer.Connection) bool {

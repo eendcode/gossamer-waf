@@ -91,6 +91,6 @@ func (r *RateLimiter) Validate(c gossamer.Connection) bool {
 	return true
 }
 
-func (r *RateLimiter) Verify(c gossamer.Connection) bool       { return true }
-func (r *RateLimiter) Preprocess(c gossamer.Connection) error  { return nil }
-func (r *RateLimiter) Postprocess(c gossamer.Connection) error { return nil }
+func (r *RateLimiter) Verify(c gossamer.Connection) bool               { return true }
+func (r *RateLimiter) Preprocess(c gossamer.Connection) (bool, error)  { return true, nil }
+func (r *RateLimiter) Postprocess(c gossamer.Connection) (bool, error) { return true, nil }
