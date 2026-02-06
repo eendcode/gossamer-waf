@@ -16,7 +16,7 @@ RUN mkdir /out && GOFLAGS="-tags=no_fs_access,musl" go build -o /out/gossamer /a
 
 # -------------------------------------------------------------
 
-FROM gcr.io/distroless/static-debian13:latest
+FROM gcr.io/distroless/static-debian13:debug
 
 COPY --from=builder /out/gossamer /app
 COPY --from=cloner /app/static/ /static/
