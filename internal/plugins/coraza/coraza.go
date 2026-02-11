@@ -1,10 +1,12 @@
 package coraza
 
 import (
+	"bytes"
 	"fmt"
 	"gossamer/internal/gossamer"
 	"gossamer/internal/helpers"
 	"gossamer/internal/logging"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -142,6 +144,20 @@ func (w *WAF) Preprocess(r gossamer.Connection) (bool, error) {
 	)
 
 	// phase 2
+
+	body, err := io.ReadAll(r.Request.Body)
+	if err != nil {
+		return false, err
+	}
+
+	// VERY IMPORTANT: restore the body so the next handler can read it
+	r.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	// Write body to Coraza transaction
+	if _, _, err := r.Transaction.WriteRequestBody(body); err != nil {
+		return false, err
+	}
+
 	if it, err := r.Transaction.ProcessRequestBody(); it != nil {
 		logInterruption(it, r)
 		return false, nil
