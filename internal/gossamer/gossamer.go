@@ -55,6 +55,7 @@ type Connection struct {
 	Transaction types.Transaction
 	Timing      Timing
 	Url         string
+	TargetUrl   string
 }
 
 func (r *Connection) Load() error {

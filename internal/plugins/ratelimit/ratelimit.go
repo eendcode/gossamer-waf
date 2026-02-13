@@ -24,7 +24,7 @@ type Settings struct {
 }
 
 type KeyValueStore interface {
-	// Check if the client has hit their rate limit
+	// Check if the client has hit their rate limit or if the cookie is unknown
 	Allow(context.Context, string) (bool, int64, error)
 
 	// Create a cookie for the client
@@ -35,6 +35,9 @@ type KeyValueStore interface {
 
 	// Get the current strike level
 	GetStrikes(context.Context, string) (int64, error)
+
+	// Check if the cookie exists
+	Exists(context.Context, string) (bool, error)
 }
 
 type RateLimiter struct {
@@ -69,6 +72,13 @@ func (r *RateLimiter) Validate(c gossamer.Connection) bool {
 	}
 
 	if strikes >= 20 {
+		logger.Debug(
+			"too many strikes",
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"strikes", strikes,
+		)
+
 		return false
 	}
 

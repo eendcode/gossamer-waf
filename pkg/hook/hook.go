@@ -58,7 +58,7 @@ func NewCookie(cookie string, redirectUrl string) HookCommand {
     <div class="grid">
       <div class="cell">
         <div class="content has-text-centered">
-          <p style="font-size:256px" id="countdown" class="px-6 pt-6">10</p>
+          <p style="font-size:256px" id="countdown" class="px-6 pt-6">3</p>
           <p>seconds remaining</p>
         </div>
       </div>

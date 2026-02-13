@@ -2,12 +2,17 @@ package coraza
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"gossamer/internal/gossamer"
 	"gossamer/internal/helpers"
 	"gossamer/internal/logging"
+
+	// localtbl "gossamer/internal/token_bucket/local_tbl"
+	// valkeytbl "gossamer/internal/token_bucket/valkey_tbl"
 	"io"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,15 +20,100 @@ import (
 	"github.com/caarlos0/env/v11"
 	czv3 "github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/types"
+	"github.com/goccy/go-yaml"
 )
 
 var logger *slog.Logger
+var rootFolder string
+
+const (
+	repoName = "gossamer"
+	VALKEY   = "valkey"
+	LOCAL    = "local"
+)
+
+type TokenBucketRules struct {
+	// The size of the bucket
+	Capacity int `json:"capacity"`
+
+	// Refill rate per second
+	RefillRate float64 `json:"refill_rate"`
+}
+
+type Upstream struct {
+	// An upstream is a service protected by Gossamer.
+
+	// The expected Host header
+	Hostname string `json:"hostname" validate:"fqdn"`
+
+	// The upstream URL
+	Url string `json:"url" validate:"required,url"`
+
+	// IP addresses that are permitted. if nil, everything is ok
+	AllowedSources []string `json:"allowed_sources" validate:"dive,cidr"`
+
+	// Paths that should not be accessible.
+	BlockedPaths []string `json:"blocked_paths" validate:"dive,dirpath"`
+
+	// Sets if we want to use coraza or not
+	DisableCoraza bool `json:"disable_coraza"`
+
+	// Sets the paranoia level - default is 3. Ignored if `DisableCoraza` is `true` .
+	ParanoiaLevel int `json:"paranoia_level" validate:"lte=4"`
+
+	// Ignore existing rules for the specific upstream. ID's only
+	IngoreRules []int `json:"ignore_rules"`
+
+	// Describe how rate limiting should be implemented
+	TokenBucketRules TokenBucketRules `json:"rate_limiting"`
+
+	// Whether to inspect the response or not.
+	// WARNING: applying this introduces a huge overhead, so be careful here.
+	// It is advised to only use this for API's.
+	InspectResponses bool `json:"inspect_responses"`
+}
+
+type TokenBucketImplementation interface {
+	// Check if the client has hit their rate limit or if the cookie is unknown
+	Allow(context.Context, string) (bool, int64, error)
+
+	// Create a cookie for the client
+	CreateCookie(context.Context, string) error
+
+	// Increase the current strike level
+	IncreaseStrikes(context.Context, string, int64) error
+
+	// Get the current strike level
+	GetStrikes(context.Context, string) (int64, error)
+
+	// Check if the cookie exists
+	Exists(context.Context, string) (bool, error)
+}
 
 type WAF struct {
+	// We directly inherit the Coraza WAF
 	czv3.WAF
-	ParanoiaLevel   int    `env:"CRS_PARANOIA_LEVEL" envDefault:"3" validate:"gte=1,lte=4"`
-	RepoName        string `env:"REPO_NAME" envDefault:"gossamer"`
-	InspectResponse bool   `env:"CORAZA_INSPECT_RESPONSE" envDefault:"false"`
+
+	// Set the default paranoia level. Note that this can be overriden on a per-host basis
+	DefaultParanoiaLevel int `env:"DEFAULT_PARANOIA_LEVEL" envDefault:"3" validate:"gte=1,lte=4"`
+
+	// Point to the config file
+	ConfigFile string `env:"CONFIG_FILE_PATH" envDefault:"upstreams.yaml"`
+
+	// We have multiple implementations of a token bucket algorithm. We select one here.
+	TokenBucketType string `env:"TB_TYPE" envDefault:"valkey" validate:"oneof=valkey,local"`
+
+	// For each host, we create a seperate token bucket implementation
+	TokenBucketMap map[string]TokenBucketImplementation
+
+	// All upstreams
+	Upstreams []Upstream `json:"upstreams"`
+
+	// Extra Coraza rules
+	ExtraRules []string `json:"extra_rules"`
+
+	// Virtual patches
+	VirtualPatches []string `json:"virtual_patches"`
 }
 
 func New() (*WAF, error) {
@@ -40,56 +130,285 @@ func New() (*WAF, error) {
 		return nil, err
 	}
 
-	cwd, err := os.Getwd()
+	// ------------------------------------------------------------------------------------------------
+
+	// Read the config file `upstreams.yaml`
+	if err := determineRootFolder(); err != nil {
+		return nil, err
+	}
+	configFile := filepath.Join(rootFolder, "conf", waf.ConfigFile)
+	rawData, err := os.ReadFile(configFile)
 	if err != nil {
-		logger.Error(
-			"failed to get working directory",
-			"module", "coraza",
-			"error", err,
-		)
 		return nil, err
 	}
 
-	var rootFolder string
-	if !strings.HasSuffix(cwd, waf.RepoName) {
-		splitCwd := strings.Split(cwd, "/")
-		for index, split := range splitCwd {
-			if split == waf.RepoName {
-				splitCwd = splitCwd[:len(splitCwd)-index+1]
-				break
-			}
+	// Parse the YAML file
+	if err := yaml.Unmarshal(rawData, &waf); err != nil {
+		return nil, err
+	}
 
+	// Create the token bucket map -----------------------------------------------------------------------
+	tokenBucketMap, err := waf.createTokenBucketMap()
+	if err != nil {
+		return &waf, err
+	}
+	waf.TokenBucketMap = tokenBucketMap
+
+	// Create the coraza WAF ----------------------------------------------------------
+	cWaf, err := waf.buildCoraza()
+	if err != nil {
+		return &waf, err
+	}
+	waf.WAF = cWaf
+
+	return &waf, nil
+
+}
+
+func (w *WAF) createTokenBucketMap() (map[string]TokenBucketImplementation, error) {
+
+	tokenBucketMap := make(map[string]TokenBucketImplementation)
+
+	// We loop through all the upstreams and create a token bucket implementation for each of them.
+	for _, upstream := range w.Upstreams {
+
+		tokenBucketImplementation, err := NewLimiter(upstream.TokenBucketRules)
+		if err != nil {
+			return nil, err
 		}
-		rootFolder = strings.Join(splitCwd, "/")
+
+		tokenBucketMap[upstream.Hostname] = tokenBucketImplementation
 
 	}
 
+	return tokenBucketMap, nil
+}
+
+func (w *WAF) buildCoraza() (czv3.WAF, error) {
 	corazaConf := filepath.Join(rootFolder, "conf", "rules", "coraza.conf")
 	crsSetupConf := filepath.Join(rootFolder, "conf", "rules", "coreruleset", "crs-setup.conf.example")
 	crsRules := filepath.Join(rootFolder, "conf", "rules", "coreruleset", "rules", "*.conf")
 	customConf := filepath.Join(rootFolder, "conf", "rules", "custom.conf")
 	paranoiaLevelRule := fmt.Sprintf(
 		`SecAction "id:900000,phase:1,pass,t:none,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.22.0-dev',setvar:tx.blocking_paranoia_level=%d"`,
-		waf.ParanoiaLevel,
+		w.DefaultParanoiaLevel,
 	)
+
+	// We make extra coraza rules for specific hosts.
+	var extraDirectives []string
+	var ruleCounter int = 1100000
+	for _, upstream := range w.Upstreams {
+
+		if upstream.DisableCoraza {
+			// Disable Coraza if we're instructed to do so
+			rule := fmt.Sprintf(`SecRule REQUEST_HEADERS:Host "@eq %s" "id:%d,phase:1,pass,ctl:ruleEngine=Off"`, upstream.Hostname, ruleCounter)
+			extraDirectives = append(extraDirectives, rule)
+
+			logger.Debug(
+				"adding rule for disabling coraza",
+				"upstream", upstream.Hostname,
+				"rule", rule,
+				"plugin", "coraza",
+			)
+
+			ruleCounter++
+		} else if upstream.ParanoiaLevel > 0 {
+			// Override the default paranoia level if we have one set
+			rule := fmt.Sprintf(`SecRule REQUEST_HEADERS:Host "@eq %s" "id:%d,phase:1,pass,nolog,setvar:tx.paranoia_level=%d"`, upstream.Hostname, ruleCounter, upstream.ParanoiaLevel)
+			extraDirectives = append(extraDirectives, rule)
+
+			logger.Debug(
+				"adding rule for paranoia override",
+				"upstream", upstream.Hostname,
+				"new_level", upstream.ParanoiaLevel,
+				"rule", rule,
+				"plugin", "coraza",
+			)
+
+			ruleCounter++
+		}
+
+		for _, ignoreRule := range upstream.IngoreRules {
+			rule := fmt.Sprintf(`SecRule REQUEST_HEADERS:Host "@eq %s" "id:%d,phase:1,pass,ctl:ruleRemoveById=%d"`, upstream.Hostname, ruleCounter, ignoreRule)
+			extraDirectives = append(extraDirectives, rule)
+
+			logger.Debug(
+				"adding ignore rule",
+				"upstream", upstream.Hostname,
+				"rule", rule,
+				"plugin", "coraza",
+			)
+
+			ruleCounter++
+		}
+	}
+	// Add the `extra_rules` part
+	extraDirectives = append(extraDirectives, w.ExtraRules...)
+
+	// Make it into one giant string
+	extraDirectivesString := strings.Join(extraDirectives, "\n")
 
 	cfg := czv3.NewWAFConfig().
 		WithDirectivesFromFile(corazaConf).
-		WithDirectives(paranoiaLevelRule).
+		WithDirectives(extraDirectivesString).
 		WithDirectivesFromFile(crsSetupConf).
 		WithDirectivesFromFile(crsRules).
-		WithDirectivesFromFile(customConf)
+		WithDirectivesFromFile(customConf).
+		WithDirectives(paranoiaLevelRule)
 
-	waf.WAF, err = czv3.NewWAF(cfg)
-
-	return &waf, err
-
+	return czv3.NewWAF(cfg)
 }
 
-func (w *WAF) Validate(r gossamer.Connection) bool {
+func (w *WAF) FindMatchingUpstream(c gossamer.Connection) *Upstream {
+	var matchingUpstream *Upstream
+	for _, upstream := range w.Upstreams {
+		if upstream.Hostname == c.Request.Host {
+			matchingUpstream = &upstream
+		}
+	}
+
+	return matchingUpstream
+}
+
+func (w *WAF) Validate(c gossamer.Connection) bool {
+
+	// First, find the matching upstream to the request
+	matchingUpstream := w.FindMatchingUpstream(c)
+	if matchingUpstream == nil {
+		logger.Info(
+			"no matching upstream found",
+			"cookie", c.Cookie,
+			"ip", c.IpAddress,
+			"url", c.Request.URL.String(),
+			"plugin", "upstream",
+		)
+		return false
+	}
+
+	// Check if the client is rate limited ----------------------------------------
+	tokenBucketLimiter := w.TokenBucketMap[matchingUpstream.Hostname]
+	strikes, err := tokenBucketLimiter.GetStrikes(c.Request.Context(), c.Cookie)
+	if err != nil {
+		logger.Error(
+			"unable to get strikes for client",
+			"cookie", c.Cookie,
+			"error", err,
+			"ip_address", c.IpAddress,
+			"url", c.Request.RequestURI,
+		)
+	}
+
+	if strikes >= 20 { // TODO: make the threshold a variable
+		logger.Debug(
+			"blocking request due to high strike level",
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"strikes", strikes,
+			"url", c.Request.RequestURI,
+		)
+	}
+
+	ok, remaining, err := tokenBucketLimiter.Allow(c.Request.Context(), c.Cookie)
+
+	if err != nil {
+		logger.Error(
+			"unable to call lua script",
+			"error", err,
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"url", c.Request.RequestURI,
+		)
+
+		return false
+	}
+
+	if !ok {
+		logger.Debug(
+			"rate limit reached",
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"strikes", strikes,
+			"url", c.Request.RequestURI,
+		)
+
+		return false
+	}
+
+	logger.Debug(
+		"rate limit check passed",
+		"cookie", c.Cookie,
+		"ip_address", c.IpAddress,
+		"strikes", strikes,
+		"url", c.Request.RequestURI,
+		"remaining", remaining,
+	)
+
+	// --------------------------------------------------------------------------------
+
+	// Check if our path is on the blocked paths
+	for _, blockedPath := range matchingUpstream.BlockedPaths {
+		if strings.HasPrefix(c.Request.URL.Path, blockedPath) {
+			logger.Debug(
+				"path is on blocklist",
+				"cookie", c.Cookie,
+				"ip", c.IpAddress,
+				"url", c.Request.URL.String(),
+				"blocklist_entry", blockedPath,
+				"plugin", "upstream",
+			)
+			return false
+		}
+	}
+
+	// Check if the client IP matches the allowed sources list
+	clientIp, err := netip.ParseAddr(c.IpAddress)
+	if err != nil {
+		logger.Error(
+			"unable to parse client IP address",
+			"ip", c.IpAddress,
+			"error", err,
+			"plugin", "upstream",
+		)
+		return false
+	}
+
+	var sourceAllowed bool
+	if len(matchingUpstream.AllowedSources) == 0 {
+		sourceAllowed = true
+	}
+
+SOURCE_CHECK:
+	for _, allowedSource := range matchingUpstream.AllowedSources {
+		prefix, err := netip.ParsePrefix(allowedSource)
+		if err != nil {
+			logger.Error(
+				"unable to parse IP network",
+				"network", allowedSource,
+				"error", err,
+				"plugin", "upstream",
+			)
+			return false
+		}
+
+		if prefix.Contains(clientIp) {
+			sourceAllowed = true
+			break SOURCE_CHECK
+		}
+
+	}
+
+	if !sourceAllowed {
+		logger.Debug(
+			"source not allowed",
+			"ip", c.IpAddress,
+			"url", matchingUpstream.Hostname,
+			"cookie", c.Cookie,
+			"plugin", "upstream",
+		)
+		return false
+	}
 
 	return true
-
 }
 
 func (w *WAF) Verify(r gossamer.Connection) bool {
@@ -150,7 +469,7 @@ func (w *WAF) Preprocess(r gossamer.Connection) (bool, error) {
 		return false, err
 	}
 
-	// VERY IMPORTANT: restore the body so the next handler can read it
+	// Extract the response and put it back
 	r.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	// Write body to Coraza transaction
@@ -177,8 +496,16 @@ func (w *WAF) Preprocess(r gossamer.Connection) (bool, error) {
 }
 
 func (w *WAF) Postprocess(r gossamer.Connection) (bool, error) {
-	if !w.InspectResponse {
-		return true, nil
+
+	// First, match the hostname
+	for _, upstreams := range w.Upstreams {
+		if upstreams.Hostname == r.Request.Host {
+			if !upstreams.InspectResponses {
+				return true, nil
+			} else {
+				break
+			}
+		}
 	}
 
 	// Coraza phase 3
@@ -277,4 +604,32 @@ func logInterruption(it *types.Interruption, r gossamer.Connection) {
 	)
 
 	r.Transaction.ProcessLogging()
+}
+
+func determineRootFolder() error {
+	// In order to work from the same relative directory each time, we do some unpleasant `os.Getwd()` here.
+	cwd, err := os.Getwd()
+	if err != nil {
+		logger.Error(
+			"failed to get working directory",
+			"module", "coraza",
+			"error", err,
+		)
+		return err
+	}
+
+	if !strings.HasSuffix(cwd, repoName) {
+		splitCwd := strings.Split(cwd, "/")
+		for index, split := range splitCwd {
+			if split == repoName {
+				splitCwd = splitCwd[:len(splitCwd)-index+1]
+				break
+			}
+
+		}
+		rootFolder = strings.Join(splitCwd, "/")
+
+	}
+
+	return nil
 }

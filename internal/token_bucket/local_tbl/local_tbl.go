@@ -3,6 +3,7 @@ package localtbl
 import (
 	"context"
 	"errors"
+	"gossamer/internal/plugins/coraza"
 	"math"
 	"time"
 
@@ -21,9 +22,12 @@ type Record struct {
 	Strikes   int64
 }
 
-func New() (*TokenBucketLimiter, error) {
+func New(rules coraza.TokenBucketRules) (*TokenBucketLimiter, error) {
 	var tbl TokenBucketLimiter
 	err := env.Parse(&tbl)
+
+	tbl.Capacity = rules.Capacity
+	tbl.RefillRate = rules.RefillRate
 
 	return &tbl, err
 }

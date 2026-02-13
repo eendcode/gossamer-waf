@@ -1,4 +1,4 @@
-package valkeytbl
+package coraza
 
 import (
 	"context"
@@ -13,17 +13,20 @@ import (
 type ValkeyTokenBucketLimiter struct {
 	Client     valkey.Client
 	Script     *valkey.Lua
-	Capacity   int     `env:"RATE_LIMIT_CAPACITY" envDefault:"60"`
-	RefillRate float64 `env:"RATE_LIMIT_REFILL_RATE" envDefault:"1.0"`
-	Host       string  `env:"VALKEY_HOST" envDefault:"localhost"`
-	Port       int     `env:"VALKEY_PORT" envDefault:"6379"`
+	Capacity   int
+	RefillRate float64
+	Host       string `env:"VALKEY_HOST" envDefault:"localhost"`
+	Port       int    `env:"VALKEY_PORT" envDefault:"6379"`
 }
 
-func New() (*ValkeyTokenBucketLimiter, error) {
+func NewLimiter(rules TokenBucketRules) (*ValkeyTokenBucketLimiter, error) {
 	var tbl ValkeyTokenBucketLimiter
 	if err := env.Parse(&tbl); err != nil {
 		return nil, err
 	}
+
+	tbl.Capacity = rules.Capacity
+	tbl.RefillRate = rules.RefillRate
 
 	var err error
 	tbl.Client, err = valkey.NewClient(

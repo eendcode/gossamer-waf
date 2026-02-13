@@ -1,4 +1,5 @@
 upstreams:
+  # phpmyadmin
   - hostname: localhost:8080
     url: http://localhost:8000
     allowed_sources:
@@ -6,3 +7,13 @@ upstreams:
       - 127.0.0.0/8
       - ::1/128
     blocked_paths: []
+    inspect_responses: true
+    paranoia_level: 1
+    rate_limiting:
+      capacity: 120
+      refill_rate: 5
+
+extra_rules:
+  - SecRule REQUEST_HEADERS:Host "@eq localhost:8000" "id:100,phase:2,chain,pass"
+  - SecRule ARGS ".{21,}" "id:101,phase:2,deny,log,msg:'Parameter value exceeds 20 characters',severity:CRITICAL"
+  - SecRule REQUEST_URI "@pm /health /healthz /ping" "id:102,pass,ctl:ruleEngine=Off"

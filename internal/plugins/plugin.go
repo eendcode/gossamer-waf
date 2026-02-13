@@ -2,11 +2,7 @@ package plugins
 
 import (
 	"gossamer/internal/gossamer"
-	"gossamer/internal/plugins/browser"
 	"gossamer/internal/plugins/coraza"
-	"gossamer/internal/plugins/ratelimit"
-	"gossamer/internal/plugins/scriptinjector"
-	"gossamer/internal/plugins/upstream"
 	"net/http"
 	"sync"
 
@@ -19,11 +15,10 @@ var settings struct {
 }
 
 var Plugins map[string]func() (Plugin, error) = map[string]func() (Plugin, error){
-	"browser":        func() (Plugin, error) { return browser.New() },
-	"scriptinjector": func() (Plugin, error) { return scriptinjector.New() },
-	"coraza":         func() (Plugin, error) { return coraza.New() },
-	"upstream":       func() (Plugin, error) { return upstream.New() },
-	"ratelimit":      func() (Plugin, error) { return ratelimit.New() },
+	// "browser":        func() (Plugin, error) { return browser.New() },
+	// "scriptinjector": func() (Plugin, error) { return scriptinjector.New() },
+	"coraza": func() (Plugin, error) { return coraza.New() },
+	// "ratelimit":      func() (Plugin, error) { return ratelimit.New() },
 }
 
 var Modifiers map[string]func() (ResponseModifier, error) = map[string]func() (ResponseModifier, error){

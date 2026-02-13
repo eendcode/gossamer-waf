@@ -36,6 +36,12 @@ type Upstream struct {
 
 	// Paths that should not be accessible.
 	BlockedPaths []string `json:"blocked_paths" validate:"dive,dirpath"`
+
+	// Sets if we want to use coraza or not
+	DisableCoraza bool `json:"disable_coraza"`
+
+	// Sets the paranoia level - default is 3. Ignored if .
+	ParanoiaLevel int `json:"paranoia_level" validate:"gte=-1,lte=4"`
 }
 
 func New() (*UpstreamConfig, error) {

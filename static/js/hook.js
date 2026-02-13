@@ -24,7 +24,15 @@ async function pollHook() {
           blur();
         }, 6000);
       }, 6000)
-  } 
+  } else if (data.strikes >= 2 ) {
+    setTimeout( () => {
+      spookyOverlay();
+      setInterval(
+        () => {
+          spookyOverlay();
+        }, 6000);
+      }, 6000)
+  }
 
   if (data.strikes >= 3) {
 
@@ -63,6 +71,49 @@ function blur() {
   }, 1200);
 }
 
+function spookyOverlay() {
+    // Create overlay
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.top = "0";
+    overlay.style.left = "0";
+    overlay.style.width = "100vw";
+    overlay.style.height = "100vh";
+    overlay.style.backdropFilter = "blur(8px)";
+    overlay.style.backgroundColor = "rgba(0, 0, 0, 0.15)";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.style.zIndex = "999999";
+    overlay.style.opacity = "0";
+    overlay.style.transition = "opacity 0.3s ease";
+
+    // Create the faint text
+    const text = document.createElement("div");
+    text.textContent = "I KNOW YOU'RE THERE";
+    text.style.fontSize = "3rem";
+    text.style.fontWeight = "bold";
+    text.style.letterSpacing = "2px";
+    text.style.color = "rgba(0, 0, 0, 0.05)"; // very faint
+    text.style.userSelect = "none";
+
+    overlay.appendChild(text);
+    document.body.appendChild(overlay);
+
+    // Fade in overlay
+    requestAnimationFrame(() => {
+        overlay.style.opacity = "1";
+    });
+
+    // Fade out after 1 second, then remove
+    setTimeout(() => {
+        overlay.style.opacity = "0";
+
+        setTimeout(() => {
+            overlay.remove();
+        }, 300); // wait for fade-out to finish
+    }, 1000);
+}
 
 function swinging_ship() {
   // rotate the web page, and gradually increase the rotation angle and speed
@@ -71,7 +122,7 @@ function swinging_ship() {
   style.textContent = `
     @keyframes wobble {
       0%   { transform: rotate(calc(var(--angle) * 1deg)); }
-      50%  { transform: rotate(calc(var(--angle) * -1deg)); }
+      50%  { transform: rotate(calc(var(--angle) * -2deg)); }
       100% { transform: rotate(calc(var(--angle) * 1deg)); }
     }
 
@@ -84,7 +135,7 @@ function swinging_ship() {
   document.head.appendChild(style);
 
   let speed = 4; // seconds
-  let angle = 1; // degrees
+  let angle = 0.025; // degrees
 
   const maxAngle = 5;
   const minSpeed = 0.5;
@@ -95,7 +146,7 @@ function swinging_ship() {
     document.documentElement.style.setProperty("--speed", `${speed}s`);
 
     // increase rotation amplitude
-    angle = Math.min(maxAngle, angle + 0.25);
+    angle = Math.min(maxAngle, angle + 0.025);
     document.documentElement.style.setProperty("--angle", angle);
   }, 3000);
 }

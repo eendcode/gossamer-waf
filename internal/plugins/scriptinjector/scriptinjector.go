@@ -45,7 +45,7 @@ func (s *ScriptInjector) Postprocess(c gossamer.Connection) (bool, error) {
 	result, err := injectScriptIntoHtml(body, s.Script)
 
 	if err != nil {
-		logger.Error("error on attempting script injection", "error", err, "cookie", c.Cookie, "url", c.Request.RequestURI, "ip", c.IpAddress)
+		logger.Error("error on attempting script injection", "body", body, "error", err, "cookie", c.Cookie, "url", c.Request.RequestURI, "ip", c.IpAddress)
 		return false, err
 	}
 
@@ -53,7 +53,7 @@ func (s *ScriptInjector) Postprocess(c gossamer.Connection) (bool, error) {
 	c.Recorder.WriteString(result)
 
 	if body != result {
-		logger.Debug("altered html", "plugin", "scriptinjector", "old", body, "new", result, "cookie", c.Cookie, "ip", c.IpAddress)
+		logger.Debug("altered html", "plugin", "scriptinjector", "old", len(body), "new", len(result), "cookie", c.Cookie, "ip", c.IpAddress)
 	} else {
 		logger.Debug("preprocessor did not alter html", "plugin", "scriptinjector", "cookie", c.Cookie, "ip", c.IpAddress)
 	}
@@ -61,36 +61,17 @@ func (s *ScriptInjector) Postprocess(c gossamer.Connection) (bool, error) {
 	return true, nil
 }
 
-// func injectScriptIntoHtml(html, script string) string {
-// 	// Modifies a HTML response to include a script.
-// 	lower := strings.ToLower(html)
-// 	headIdx := strings.Index(lower, "<head")
-// 	if headIdx == -1 {
-// 		// no head found
-// 		logger.Debug("not injecting script into response")
-// 		return html
-// 	}
-
-// 	// Find the closing tag, and don't do anything if we can't find it
-// 	tagEnd := strings.Index(lower[headIdx:], ">")
-
-// 	if tagEnd == -1 {
-// 		return html
-// 	}
-
-// 	insertPosition := headIdx + tagEnd + 1
-
-// 	new := html[:insertPosition] + "\n" + fmt.Sprintf(`<script src="/gstatic/js/%s.js"></script>`, script) + html[insertPosition:]
-// 	return new
-
-// }
-
 func injectScriptIntoHtml(html, script string) (string, error) {
 	lower := strings.ToLower(html)
 
 	endHeadIdx := strings.Index(lower, "</head>")
 	if endHeadIdx == -1 {
-		return html, errors.New("can't find closing head")
+		if strings.Contains(lower, "<head>") {
+			// There's a <head>, but not a </head> -> error
+			return html, errors.New("can't find closing head")
+		}
+		// There wasn't a <head> to begin with - not unusual for stuff like 302's
+		return html, nil
 	}
 
 	injection := fmt.Sprintf(
