@@ -10,7 +10,7 @@ upstreams:
     inspect_responses: true
     paranoia_level: 1
     rate_limiting:
-      capacity: 120
+      capacity: 20
       refill_rate: 5
 
 extra_rules:
