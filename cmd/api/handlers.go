@@ -117,7 +117,7 @@ func handleMissingCookie(tbi coraza.TokenBucketImplementation, w http.ResponseWr
 		return
 	}
 
-	logger.Info("new client been given a cookie", "ip", c.IpAddress, "cookie", newCookie, "rate_limit_remaining", remaining)
+	logger.Info("new client been given a cookie", "ip", c.IpAddress, "cookie", newCookie) // "rate_limit_remaining", remaining)
 
 	cmd := hook.NewCookie(newCookie, c.Request.RequestURI)
 	w.Write([]byte(cmd.Script))
