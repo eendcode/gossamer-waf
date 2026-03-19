@@ -514,7 +514,7 @@ func (w *WAF) Postprocess(r gossamer.Connection) (bool, error) {
 
 			if k == "Location" {
 				logger.Debug("rewriting location")
-				r.Transaction.AddResponseHeader(k, r.TargetUrl)
+				r.Transaction.AddResponseHeader(k, r.Request.RequestURI)
 			} else {
 				logger.Debug("adding response header", k, v)
 				r.Transaction.AddResponseHeader(k, v)
