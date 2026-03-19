@@ -511,14 +511,8 @@ func (w *WAF) Postprocess(r gossamer.Connection) (bool, error) {
 	// Coraza phase 3
 	for k, values := range r.Recorder.Header() {
 		for _, v := range values {
-
-			if k == "Location" {
-				logger.Debug("rewriting location", k, r.Request.Host)
-				r.Transaction.AddResponseHeader(k, r.Request.Host)
-			} else {
-				logger.Debug("adding response header", k, v)
-				r.Transaction.AddResponseHeader(k, v)
-			}
+			logger.Debug("adding response header", k, v)
+			r.Transaction.AddResponseHeader(k, v)
 		}
 	}
 
