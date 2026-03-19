@@ -94,17 +94,17 @@ func handleMissingCookie(tbi coraza.TokenBucketImplementation, w http.ResponseWr
 		return
 	}
 
-	allowed, remaining, err := tbi.Allow(context.Background(), c.IpAddress)
-	if err != nil {
-		raiseInternalServerError(w, err)
-		return
-	}
+	// allowed, remaining, err := tbi.Allow(context.Background(), c.IpAddress)
+	// if err != nil {
+	// 	raiseInternalServerError(w, err)
+	// 	return
+	// }
 
-	if !allowed {
-		logger.Info("client hit rate limit", "ip", c.IpAddress)
-		rendering.RenderForbidden(w, c.Request)
-		return
-	}
+	// if !allowed {
+	// 	logger.Info("client hit rate limit", "ip", c.IpAddress)
+	// 	rendering.RenderForbidden(w, c.Request)
+	// 	return
+	// }
 
 	newCookie, err := helpers.GenerateCookie()
 	if err != nil {
