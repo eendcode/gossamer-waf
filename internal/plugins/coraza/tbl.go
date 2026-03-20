@@ -17,6 +17,7 @@ type ValkeyTokenBucketLimiter struct {
 	RefillRate float64
 	Host       string `env:"VALKEY_HOST" envDefault:"localhost"`
 	Port       int    `env:"VALKEY_PORT" envDefault:"6379"`
+	CookieTTL  int    `env:"COOKIE_TTL" envDefault:"86400"`
 }
 
 func NewLimiter(rules TokenBucketRules) (*ValkeyTokenBucketLimiter, error) {
@@ -42,10 +43,24 @@ func NewLimiter(rules TokenBucketRules) (*ValkeyTokenBucketLimiter, error) {
 
 func (tbl *ValkeyTokenBucketLimiter) CreateCookie(ctx context.Context, cookie string) error {
 	// Create a cookie in valkey
-	return tbl.Client.Do(
+
+	now := time.Now().UnixMilli()
+
+	err := tbl.Client.Do(
 		ctx,
-		tbl.Client.B().Hmset().Key(cookie).FieldValue().FieldValue("cookie", cookie).Build(),
+		tbl.Client.B().Hmset().
+			Key(cookie).FieldValue().
+			FieldValue("cookie", cookie).
+			FieldValue("tokens", strconv.Itoa(tbl.Capacity)).
+			FieldValue("timestamp", strconv.Itoa(int(now))).
+			Build(),
 	).Error()
+
+	if err != nil {
+		return err
+	}
+
+	return tbl.Client.Do(ctx, tbl.Client.B().Expire().Key(cookie).Seconds(3600).Build()).Error()
 
 }
 
@@ -94,7 +109,13 @@ func (tbl *ValkeyTokenBucketLimiter) Allow(ctx context.Context, key string) (boo
 		},
 	).ToArray()
 
-	if len(result) != 2 || err != nil {
+	if err != nil {
+
+		return false, 0, err
+	}
+
+	if len(result) != 2 {
+		logger.Error("error on return length", "error", err, "result", result)
 		return false, 0, fmt.Errorf("unexpected return type %v from script", result)
 	}
 
@@ -126,6 +147,11 @@ local last_refill = tonumber(data[2])
 
 
 if tokens == nil then
+    tokens = capacity
+    last_refill = now
+end
+
+if not tokens or not last_refill then
     tokens = capacity
     last_refill = now
 end

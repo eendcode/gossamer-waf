@@ -7,7 +7,7 @@ import (
 
 const (
 	CookieName      string = "_gSession"
-	cookieValidTime int    = 86400
+	cookieValidTime int    = 3600
 )
 
 // clients do api requests to an endpoint `/gshook`
@@ -20,13 +20,6 @@ type HookCommand struct {
 func (h HookCommand) ToHtml() ([]byte, error) {
 	return json.Marshal(h)
 }
-
-// func generateCookie() (string, error) {
-// 	id, err := uuid.NewV7()
-// 	idString := id.String()
-
-// 	return strings.ReplaceAll(idString, "-", ""), err
-// }
 
 func NewCookie(cookie string, redirectUrl string) HookCommand {
 

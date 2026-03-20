@@ -57,7 +57,7 @@ func checkIn(w http.ResponseWriter, r *http.Request) {
 	logger.Debug("got cookie in hook", "cookie", cookie)
 
 	// Check the cookies current strike level
-	strikes, err := tbi.GetStrikes(context.Background(), cookie)
+	strikes, err := tbi.GetStrikes(r.Context(), cookie)
 	if err != nil {
 		raiseInternalServerError(w, err)
 		return
@@ -94,7 +94,7 @@ func handleMissingCookie(tbi coraza.TokenBucketImplementation, w http.ResponseWr
 		return
 	}
 
-	allowed, remaining, err := tbi.Allow(context.Background(), c.IpAddress)
+	allowed, remaining, err := tbi.Allow(c.Request.Context(), c.IpAddress)
 	if err != nil {
 		raiseInternalServerError(w, err)
 		return
@@ -112,7 +112,10 @@ func handleMissingCookie(tbi coraza.TokenBucketImplementation, w http.ResponseWr
 		return
 	}
 
-	if err := tbi.CreateCookie(context.Background(), newCookie); err != nil {
+	logger.Debug("creating cookie for client", "ip", c.IpAddress, "cookie", newCookie)
+
+	if err := tbi.CreateCookie(c.Request.Context(), newCookie); err != nil {
+		logger.Error("could not create cookie", "ip", c.IpAddress, "cookie", newCookie)
 		raiseInternalServerError(w, err)
 		return
 	}
@@ -155,7 +158,7 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
-	cookieKnown, err := tbi.Exists(context.Background(), cookie)
+	cookieKnown, err := tbi.Exists(rq.Context(), cookie)
 	if err != nil {
 		raiseInternalServerError(w, err)
 		return
@@ -191,7 +194,7 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		)
 
 		// Increase the number of strikes for this cookie
-		if err := tbi.IncreaseStrikes(context.Background(), cookie, 1); err != nil {
+		if err := tbi.IncreaseStrikes(rq.Context(), cookie, 1); err != nil {
 			raiseInternalServerError(w, err)
 			return
 		}
@@ -225,7 +228,7 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		)
 
 		// Increase the number of strikes for this cookie
-		if err := tbi.IncreaseStrikes(context.Background(), cookie, 1); err != nil {
+		if err := tbi.IncreaseStrikes(rq.Context(), cookie, 1); err != nil {
 			raiseInternalServerError(w, err)
 			return
 		}
@@ -302,7 +305,7 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		logger.Debug("received negative answer from verification", "cookie", c.Cookie, "url", c.Request.URL.String())
 
 		// Increase the number of strikes for this cookie
-		if err := tbi.IncreaseStrikes(context.Background(), cookie, 1); err != nil {
+		if err := tbi.IncreaseStrikes(rq.Context(), cookie, 1); err != nil {
 			raiseInternalServerError(w, err)
 		}
 		rendering.RenderForbidden(w, rq)
@@ -333,7 +336,7 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 		)
 
 		// Increase the number of strikes for this cookie
-		if err := tbi.IncreaseStrikes(context.Background(), cookie, 1); err != nil {
+		if err := tbi.IncreaseStrikes(rq.Context(), cookie, 1); err != nil {
 			raiseInternalServerError(w, err)
 			return
 		}

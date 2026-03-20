@@ -3,6 +3,8 @@ package browser
 import (
 	"errors"
 	"gossamer/internal/gossamer"
+	"gossamer/internal/logging"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -402,18 +404,42 @@ func searchExtensions(snippets []string) BrowserType {
 
 }
 
-type BrowserPlugin struct{}
+type BrowserPlugin struct {
+	Logger *slog.Logger
+}
 
 func (b *BrowserPlugin) Validate(c gossamer.Connection) bool {
 	// This is the only non-trivial function this plugin provides.
 
 	browser, err := NewBrowser(c.Request)
 	if err != nil {
+		b.Logger.Error(
+			"unknown error on processing browser",
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"url", c.Request.RequestURI,
+			"error", err,
+		)
 		return false
 	}
 
 	if err := browser.ComplianceCheck(); err != nil {
+		b.Logger.Warn(
+			"browser did not meet compliance check",
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"url", c.Request.RequestURI,
+			"error", err,
+		)
 		return false
+
+	} else {
+		b.Logger.Debug(
+			"browser met compliance check",
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"url", c.Request.RequestURI,
+		)
 	}
 
 	return true
@@ -426,5 +452,6 @@ func (b *BrowserPlugin) Preprocess(_ gossamer.Connection) (bool, error) { return
 func (b *BrowserPlugin) Postprocess(_ gossamer.Connection) (bool, error) { return true, nil }
 
 func New() (*BrowserPlugin, error) {
-	return &BrowserPlugin{}, nil
+	logger := logging.NewLogger()
+	return &BrowserPlugin{Logger: logger}, nil
 }

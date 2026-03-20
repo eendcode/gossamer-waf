@@ -157,7 +157,7 @@ func RenderForbidden(w http.ResponseWriter, _ *http.Request) {
 		Status:     "Forbidden",
 		Color:      "warning",
 		Subtitle:   "You don't have the right",
-		Subtext:    "Put these foolish ambitions to rest",
+		Subtext:    "You have been blocked due to malicious activity",
 	}); err != nil {
 		ErrUnableToRender(w)
 		return

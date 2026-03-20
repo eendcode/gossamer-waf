@@ -67,6 +67,9 @@ type Upstream struct {
 	// Describe how rate limiting should be implemented
 	TokenBucketRules TokenBucketRules `json:"rate_limiting"`
 
+	// Maximum parameter length. Set to 0 to disable
+	MaxParamLength int `json:"max_param_length"`
+
 	// Whether to inspect the response or not.
 	// WARNING: applying this introduces a huge overhead, so be careful here.
 	// It is advised to only use this for API's.
@@ -102,6 +105,9 @@ type WAF struct {
 
 	// We have multiple implementations of a token bucket algorithm. We select one here.
 	TokenBucketType string `env:"TB_TYPE" envDefault:"valkey" validate:"oneof=valkey,local"`
+
+	// Maximum strikes
+	MaxStrikes int `env:"MAX_STRIKES" envDefault:"20"`
 
 	// For each host, we create a seperate token bucket implementation
 	TokenBucketMap map[string]TokenBucketImplementation
@@ -159,6 +165,7 @@ func New() (*WAF, error) {
 	if err != nil {
 		return &waf, err
 	}
+
 	waf.WAF = cWaf
 
 	return &waf, nil
@@ -209,6 +216,7 @@ func (w *WAF) buildCoraza() (czv3.WAF, error) {
 				"upstream", upstream.Hostname,
 				"rule", rule,
 				"plugin", "coraza",
+				"id", ruleCounter,
 			)
 
 			ruleCounter++
@@ -223,6 +231,7 @@ func (w *WAF) buildCoraza() (czv3.WAF, error) {
 				"new_level", upstream.ParanoiaLevel,
 				"rule", rule,
 				"plugin", "coraza",
+				"id", ruleCounter,
 			)
 
 			ruleCounter++
@@ -237,26 +246,39 @@ func (w *WAF) buildCoraza() (czv3.WAF, error) {
 				"upstream", upstream.Hostname,
 				"rule", rule,
 				"plugin", "coraza",
+				"id", ruleCounter,
 			)
 
 			ruleCounter++
 		}
+
+		if upstream.MaxParamLength > 0 {
+			rule := fmt.Sprintf(`SecRule ARGS ".{%d,}" "id:%d,phase:2,deny,log,msg:'Parameter value exceeds %d characters',severity:CRITICAL"`, upstream.MaxParamLength+1, ruleCounter, upstream.MaxParamLength)
+			extraDirectives = append(extraDirectives, rule)
+
+			logger.Debug(
+				"adding max parameter rule",
+				"upstream", upstream.Hostname,
+				"length", upstream.MaxParamLength,
+				"plugin", "coraza",
+				"id", ruleCounter,
+			)
+		}
 	}
-	// Add the `extra_rules` part
-	extraDirectives = append(extraDirectives, w.ExtraRules...)
 
 	// Make it into one giant string
 	extraDirectivesString := strings.Join(extraDirectives, "\n")
 
 	cfg := czv3.NewWAFConfig().
 		WithDirectivesFromFile(corazaConf).
-		WithDirectives(extraDirectivesString).
 		WithDirectivesFromFile(crsSetupConf).
 		WithDirectivesFromFile(crsRules).
 		WithDirectivesFromFile(customConf).
+		WithDirectives(extraDirectivesString).
 		WithDirectives(paranoiaLevelRule)
 
 	return czv3.NewWAF(cfg)
+
 }
 
 func (w *WAF) FindMatchingUpstream(c gossamer.Connection) *Upstream {
@@ -288,7 +310,16 @@ func (w *WAF) Validate(c gossamer.Connection) bool {
 	// Check if the client is rate limited ----------------------------------------
 	tokenBucketLimiter := w.TokenBucketMap[matchingUpstream.Hostname]
 	strikes, err := tokenBucketLimiter.GetStrikes(c.Request.Context(), c.Cookie)
-	if err != nil {
+	if err == context.Canceled {
+		logger.Debug(
+			"context canceled for client",
+			"cookie", c.Cookie,
+			"ip_address", c.IpAddress,
+			"url", c.Request.RequestURI,
+		)
+
+		return false
+	} else if err != nil {
 		logger.Error(
 			"unable to get strikes for client",
 			"cookie", c.Cookie,
@@ -296,21 +327,35 @@ func (w *WAF) Validate(c gossamer.Connection) bool {
 			"ip_address", c.IpAddress,
 			"url", c.Request.RequestURI,
 		)
+		return false
 	}
 
-	if strikes >= 20 { // TODO: make the threshold a variable
-		logger.Debug(
+	if strikes >= int64(w.MaxStrikes) {
+		logger.Warn(
 			"blocking request due to high strike level",
 			"cookie", c.Cookie,
 			"ip_address", c.IpAddress,
 			"strikes", strikes,
 			"url", c.Request.RequestURI,
 		)
+		return false
 	}
 
 	ok, remaining, err := tokenBucketLimiter.Allow(c.Request.Context(), c.Cookie)
 
-	if err != nil {
+	if err == context.Canceled {
+
+		logger.Debug(
+			"request canceled",
+			"cookie", c.Cookie,
+			"url", c.Request.RequestURI,
+			"ip_address", c.IpAddress,
+		)
+
+		return false
+
+	} else if err != nil {
+
 		logger.Error(
 			"unable to call lua script",
 			"error", err,
