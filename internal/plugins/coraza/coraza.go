@@ -331,22 +331,23 @@ func (w *WAF) Validate(c gossamer.Connection) bool {
 	}
 
 	if strikes >= int64(w.MaxStrikes) {
-		// logger.Warn(
-		// 	"blocking request due to high strike level",
-		// 	"cookie", c.Cookie,
-		// 	"ip_address", c.IpAddress,
-		// 	"strikes", strikes,
-		// 	"url", c.Request.RequestURI,
-		// )
-		// return false
-
 		logger.Warn(
-			"should block this due to high strike level, but continuing for now",
+			"blocking request due to high strike level",
 			"cookie", c.Cookie,
 			"ip_address", c.IpAddress,
 			"strikes", strikes,
 			"url", c.Request.RequestURI,
 		)
+
+		return false
+
+		// logger.Warn(
+		// 	"should block this due to high strike level, but continuing for now",
+		// 	"cookie", c.Cookie,
+		// 	"ip_address", c.IpAddress,
+		// 	"strikes", strikes,
+		// 	"url", c.Request.RequestURI,
+		// )
 
 	}
 
