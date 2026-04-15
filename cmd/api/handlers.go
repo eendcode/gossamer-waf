@@ -354,7 +354,12 @@ func handleProxy(w http.ResponseWriter, rq *http.Request) {
 	for k, vv := range c.Recorder.Header() {
 		for _, v := range vv {
 			w.Header().Add(k, v)
+			// process x-forwarded-for header
+			if strings.ToLower(k) == "x-forwarded-for" {
+				c.IpAddress = v
+			}
 		}
+
 	}
 
 	// Since we may have modified the response, we delete the `Content-Length` header set by the upstream service, and let golang determine it for us.
