@@ -101,5 +101,6 @@ func (r *Connection) Log(logger *slog.Logger) {
 		"gossamer_overhead_ms", r.Timing.Total()-r.Timing.UpstreamDuration(),
 		"request_body", r.RequestBody,
 		"host", r.Request.Host,
+		"method", r.Request.Method,
 	)
 }
