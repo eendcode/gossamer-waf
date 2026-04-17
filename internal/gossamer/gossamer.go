@@ -98,5 +98,7 @@ func (r *Connection) Log(logger *slog.Logger) {
 		"upstream_response_time_ms", r.Timing.UpstreamDuration(),
 		"total_response_time_ms", r.Timing.Total(),
 		"gossamer_overhead_ms", r.Timing.Total()-r.Timing.UpstreamDuration(),
+		"request_body", r.Request.Body,
+		"host", r.Request.Host,
 	)
 }
