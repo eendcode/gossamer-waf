@@ -49,6 +49,7 @@ func (t Timing) ValidationTime() int64 {
 
 type Connection struct {
 	Request     *http.Request
+	RequestBody []byte
 	Recorder    *httptest.ResponseRecorder
 	Cookie      string
 	IpAddress   string
@@ -98,7 +99,7 @@ func (r *Connection) Log(logger *slog.Logger) {
 		"upstream_response_time_ms", r.Timing.UpstreamDuration(),
 		"total_response_time_ms", r.Timing.Total(),
 		"gossamer_overhead_ms", r.Timing.Total()-r.Timing.UpstreamDuration(),
-		"request_body", r.Request.Body,
+		"request_body", r.RequestBody,
 		"host", r.Request.Host,
 	)
 }

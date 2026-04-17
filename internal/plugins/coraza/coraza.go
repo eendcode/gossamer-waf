@@ -524,6 +524,9 @@ func (w *WAF) Preprocess(r gossamer.Connection) (bool, error) {
 		return false, err
 	}
 
+	// Log the body
+	r.RequestBody = body
+
 	// Extract the response and put it back
 	r.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
