@@ -2,6 +2,7 @@ package browser
 
 import (
 	"errors"
+	"fmt"
 	"gossamer/internal/gossamer"
 	"gossamer/internal/logging"
 	"log/slog"
@@ -17,6 +18,10 @@ var (
 	ErrBrowserInconsistency = errors.New("browser returns inconsistent information")
 	ErrUnknownBrowser       = errors.New("unknown browser")
 )
+
+func ErrBrowser(msg string) error {
+	return fmt.Errorf("browser error - %s", msg)
+}
 
 const (
 	hintUa          string = "Sec-CH-UA"
@@ -139,7 +144,7 @@ func (b *Browser) ComplianceCheck() error {
 	// Perform a compliance check to see if the browser doesn't hold back information it shouldn't
 
 	if b.UserAgent == "" {
-		return ErrBrowserInconsistency
+		return ErrBrowser("empty user agent")
 	}
 
 	sameBrowser, err := ParseUserAgentHeader(b.UserAgent)
@@ -161,10 +166,15 @@ func (b *Browser) ComplianceCheck() error {
 		return nil
 
 	default:
-		if b.Platform == "Unknown" || b.UserAgentHint == "Unknown" || b.Version == "Unknown" || b.DPR == 0 {
-			return ErrBrowserInconsistency
+		if b.Platform == "Unknown" {
+			return ErrBrowser("unknown platform")
+		} else if b.UserAgentHint == "Unknown" {
+			return ErrBrowser("unknown user agent hint")
+		} else if b.Version == "Unknown" {
+			return ErrBrowser("unknown browser version")
+		} else if b.DPR == 0 {
+			return ErrBrowser("zero dpr")
 		}
-
 	}
 
 	if sameBrowser.IsMobile != b.IsMobile || sameBrowser.Platform != b.Platform || b.BrowserType != sameBrowser.BrowserType {
@@ -430,6 +440,7 @@ func (b *BrowserPlugin) Validate(c gossamer.Connection) bool {
 			"ip_address", c.IpAddress,
 			"url", c.Request.RequestURI,
 			"error", err,
+			"browser", browser,
 		)
 		return false
 

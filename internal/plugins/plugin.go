@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"gossamer/internal/gossamer"
-	"gossamer/internal/plugins/browser"
 	"gossamer/internal/plugins/coraza"
 	"gossamer/internal/plugins/rewrite"
 	"gossamer/internal/plugins/scriptinjector"
@@ -18,7 +17,7 @@ var settings struct {
 }
 
 var Plugins map[string]func() (Plugin, error) = map[string]func() (Plugin, error){
-	"browser":        func() (Plugin, error) { return browser.New() },
+	// "browser":        func() (Plugin, error) { return browser.New() },
 	"scriptinjector": func() (Plugin, error) { return scriptinjector.New() },
 	"coraza":         func() (Plugin, error) { return coraza.New() },
 	// "comments":       func() (Plugin, error) { return comments.New() },
