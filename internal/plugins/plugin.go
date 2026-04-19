@@ -3,7 +3,9 @@ package plugins
 import (
 	"gossamer/internal/gossamer"
 	"gossamer/internal/plugins/browser"
+	"gossamer/internal/plugins/comments"
 	"gossamer/internal/plugins/coraza"
+	"gossamer/internal/plugins/rewrite"
 	"gossamer/internal/plugins/scriptinjector"
 	"net/http"
 	"sync"
@@ -20,7 +22,8 @@ var Plugins map[string]func() (Plugin, error) = map[string]func() (Plugin, error
 	"browser":        func() (Plugin, error) { return browser.New() },
 	"scriptinjector": func() (Plugin, error) { return scriptinjector.New() },
 	"coraza":         func() (Plugin, error) { return coraza.New() },
-	// "ratelimit":      func() (Plugin, error) { return ratelimit.New() },
+	"comments":       func() (Plugin, error) { return comments.New() },
+	"rewrite":        func() (Plugin, error) { return rewrite.New() },
 }
 
 var Modifiers map[string]func() (ResponseModifier, error) = map[string]func() (ResponseModifier, error){
