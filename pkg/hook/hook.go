@@ -67,7 +67,7 @@ func NewCookie(cookie string, redirectUrl string) HookCommand {
   </div>
 
 <script>
-    let count = 3;
+    let count = 0;
     const countdownEl = document.getElementById('countdown');
 
     const interval = setInterval(() => {
