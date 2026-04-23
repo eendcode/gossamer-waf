@@ -241,7 +241,7 @@ func (w *WAF) buildCoraza() (czv3.WAF, error) {
 			rule := fmt.Sprintf(`SecRule REQUEST_HEADERS:Host "@eq %s" "id:%d,phase:1,pass,ctl:ruleRemoveById=%d"`, upstream.Hostname, ruleCounter, ignoreRule)
 			extraDirectives = append(extraDirectives, rule)
 
-			logger.Debug(
+			logger.Info(
 				"adding ignore rule",
 				"upstream", upstream.Hostname,
 				"rule", rule,
