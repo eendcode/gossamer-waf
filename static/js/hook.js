@@ -5,13 +5,13 @@ async function pollHook() {
 
   const data = await res.json();
 
-  if (data.strikes >= 0) {
+  if (data.strikes > 0) {
     console.log("you have " + data.strikes + " strikes");
   } else {
     console.log("ERROR: " + data);
   }
 
-  if (data.strikes >= 1) {
+  if (data.strikes >= 50) {
 
     if (data.debug) {
       console.log("blurring in 6s");
@@ -24,7 +24,7 @@ async function pollHook() {
           blur();
         }, 6000);
       }, 6000)
-  } else if (data.strikes >= 2 ) {
+  } else if (data.strikes >= 51 ) {
     setTimeout( () => {
       spookyOverlay();
       setInterval(
@@ -34,7 +34,7 @@ async function pollHook() {
       }, 6000)
   }
 
-  if (data.strikes >= 3) {
+  if (data.strikes >= 53) {
 
     if (data.debug) {
       console.log("distortion in 10s");
@@ -44,7 +44,7 @@ async function pollHook() {
   }
 
 
-  if (data.strikes >= 5) {
+  if (data.strikes >= 53) {
     if (data.debug) {
       console.log("freefall after 20s");
     }
@@ -53,7 +53,7 @@ async function pollHook() {
   }
 
 
-  if (data.strikes >= 10) {
+  if (data.strikes >= 100) {
     if (data.debug) {
       console.log("hop on the swinging ship");
     }
